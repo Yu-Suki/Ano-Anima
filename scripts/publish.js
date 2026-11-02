@@ -79,7 +79,7 @@ if (!st.trim()) {
   console.log('\n== 推送（网络不稳会自动重试）==');
   let ok = false;
   for (let i = 1; i <= 15; i++) {
-    const r = spawnSync('git', ['push', '-u', 'origin', 'main'], { cwd: PUB, stdio: 'ignore' });
+    const r = spawnSync('git', ['push', '--force', '-u', 'origin', 'main'], { cwd: PUB, stdio: 'ignore' });
     if (r.status === 0) { ok = true; console.log('  第 ' + i + ' 次成功'); break; }
     console.log('  第 ' + i + ' 次失败，等 4 秒重试');
     await new Promise((r2) => setTimeout(r2, 4000));
