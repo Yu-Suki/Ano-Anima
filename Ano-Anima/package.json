@@ -1,0 +1,25 @@
+{
+  "name": "ano-anima",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "阿糯 —— 会记事、有情绪、能自己找事做的 QQ 分身",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "dry": "node src/index.js --dry-run",
+    "selftest": "node scripts/selftest.js",
+    "mock": "node scripts/mock-test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@xenova/transformers": "^2.17.2",
+    "dotenv": "^16.4.5",
+    "jimp": "^1.6.1",
+    "ws": "^8.18.0"
+  },
+  "author": "Yu-Suki <72500806@cityu-dg.edu.cn>"
+}
