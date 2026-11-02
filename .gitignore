@@ -1,0 +1,11 @@
+﻿node_modules/
+.env
+.data/
+tools/
+Ano-产物/
+dist/
+.backups/
+*.log
+*.exe
+*.ano
+persona.md
