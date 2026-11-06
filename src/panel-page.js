@@ -343,8 +343,9 @@ ${CSS}
       <div class="row">
         <div class="shrink muted" id="connectsummary">点「刷新」查看当前状态（不会自动探测）</div>
         <button class="act primary shrink" onclick="loadConnect(true)">刷新检测</button>
+        <button class="act shrink" onclick="startProtocolNow()">启动协议端</button>
       </div>
-      <div class="muted" style="margin-top:6px">掉线时这里只显示状态，不会自己重连——自动重登每次都触发风控验证，越弄越糟。</div>
+      <div class="muted" style="margin-top:6px">协议端（SnowLuma）没在跑的话，点「启动协议端」——它在后台起，不用留黑窗口；起来后会自动重连。</div>
     </div>
     <div id="loginHint" class="card" style="display:none;border-color:#5a2828;background:#241a1a;color:#ffb3b3"></div>
     <div id="connectlist"></div>

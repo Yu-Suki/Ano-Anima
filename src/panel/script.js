@@ -1705,3 +1705,19 @@ function gotoSettings() {
 }
 
 setTimeout(checkSetup, 1500);
+
+
+
+
+// 启动协议端（后台，无黑窗口）；起来后 10 秒自动重连机器人
+function startProtocolNow() {
+  var box = document.getElementById('connectsummary');
+  if (box) box.textContent = '正在后台启动协议端…';
+  api('/api/proto/start', { method: 'POST' })
+    .then(function (r) {
+      if (r && r.error) { toast('启动失败：' + r.error); return; }
+      toast(r && r.already ? '协议端本来就在跑' : '协议端已启动，等它登录');
+      setTimeout(function () { loadConnect(true); }, 14000);
+    })
+    .catch(function () { toast('启动请求失败'); });
+}

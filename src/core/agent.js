@@ -67,14 +67,15 @@ export class Agent {
     const plat = ctx.platform || '';   // 由 adapter 告诉我们这是哪个平台
     const platText = plat ? (this.platCache?.[plat] || '') : '';
     const lines = [this.persona.trim(), '', this.coreRules || RULES, '', platText, '', '## 当前环境',
-      `- 你在这边的帐号：${ctx.selfId || '未知'}`,
+      '- 我说话的时候只有一个声音：我说的就是我的话。别人说的，让那个人去说。',
+      `- 我在这边的帐号：${ctx.selfId || '未知'}`,
       `- 现在是 ${new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'long', hour: '2-digit', minute: '2-digit' })}`];
 
     // 精力会影响她的措辞（累了就短、就懒得解释）
     if (this.mood) {
       const e = Number(this.mood.energy);
       const level = e > 0.66 ? 'high' : e > 0.33 ? 'mid' : e > 0.02 ? 'low' : 'empty';
-      // 精力不只是数字：它直接决定你此刻有多想说话
+      // 精力不只是数字：它直接决定我此刻有多想说话
       const hint = {
         high: '精神很好：可以利索、有精神、爱开玩笑',
         mid: '状态一般：正常说话',
@@ -82,7 +83,7 @@ export class Agent {
         empty: '几乎没力气：只说很短的话，不想解释',
       }[level];
       lines.push('', '## 现在的精力', '- ' + hint);
-      lines.push('- 精力越低，你越不想开口：可能只回一两个字、敷衍，或者干脆不理。这不是规矩，是你此刻真实的状态。');
+      lines.push('- 精力越低，我越不想开口：可能只回一两个字、敷衍，或者干脆不理。这不是规矩，是我此刻真实的状态。');
     }
     // 称呼一律走人物表（按账号绑定），不要用对方昵称——昵称随时会改
     const who = (ctx.who || '对方');
@@ -90,18 +91,18 @@ export class Agent {
     // 这段时间里收到的消息（可能不止一个人说的），原样给她看
     if (Number(meta.burst) > 1) {
       lines.push('- 刚刚收到了这些消息：');
-      lines.push(String(userText || '').split('\n').map((x) => '  ' + x).join('\n'));
+      lines.push(String(query || '').split('\n').map((x) => '  ' + x).join('\n'));
     }
 
     if (meta.scene === 'group') {
-      lines.push(`- 你在群 ${meta.groupName || ctx.groupId} 里，群号 ${ctx.groupId}`);
-      lines.push(`- 群里正在跟你说话的是「${who}」，号码 ${ctx.senderId || ctx.userId || ''}`);
+      lines.push(`- 我在群 ${meta.groupName || ctx.groupId} 里，群号 ${ctx.groupId}`);
+      lines.push(`- 群里正在跟我说话的是「${who}」，号码 ${ctx.senderId || ctx.userId || ''}`);
       lines.push('- 群里还有别人，说话别像在跟机器人对话。');
     } else {
-      lines.push(`- 你在私聊，对面是「${who}」，号码 ${ctx.senderId || ctx.userId || ''}`);
+      lines.push(`- 我在私聊，对面是「${who}」，号码 ${ctx.senderId || ctx.userId || ''}`);
     }
-    lines.push(ctx.isOwner ? '- 对方是你的主人。' : '- 对方不是你的主人。');
-    lines.push(`- 称呼对方就用「${who}」。对方改昵称、改群名片都不影响，你只认这个称呼，不要叫昵称。`);
+    lines.push(ctx.isOwner ? '- 对方是我的主人。' : '- 对方不是我的主人。');
+    lines.push(`- 称呼对方就用「${who}」。对方改昵称、改群名片都不影响，我只认这个称呼，不要叫昵称。`);
     if (meta.extra) lines.push(`- ${meta.extra}`);
 
     // 群聊上下文：带说话人，否则「对方」指的是谁根本没法判断
@@ -110,8 +111,8 @@ export class Agent {
       lines.push(
         '',
         '看这段记录时记住：',
-        '- 最后一条说话的人才是在跟你说话的这个，前面的是别人。',
-        '- 有人问「他是谁 / 她是谁 / 那个谁」——指的是记录里刚被提到、或者刚 @ 过的那个人，**不是你自己**，也不是提问的人。',
+        '- 最后一条说话的人才是在跟我说话的这个，前面的是别人。',
+        '- 有人问「他是谁 / 她是谁 / 那个谁」——指的是记录里刚被提到、或者刚 @ 过的那个人，**不是我自己**，也不是提问的人。',
         '- 拿不准就别猜，直接问一句「谁呀」。乱认人比不回答更糟。',
       );
     }
@@ -120,7 +121,7 @@ export class Agent {
     if (this.roster) {
       const names = this.roster.selfNames?.() || [];
       if (names.length) {
-        lines.push(`- 别人喊你「${names.slice(0, 5).join('」「')}」的时候，就是在叫你。`);
+        lines.push(`- 别人喊我「${names.slice(0, 5).join('」「')}」的时候，就是在叫我。`);
       }
 
       const everyone = this.roster.all().filter((x) => !x.isSelf);
@@ -132,12 +133,12 @@ export class Agent {
         const list = inGroup
           .slice(0, 15)
           .map((x) => {
-            const rel = x.relation ? `，你${x.relation}` : x.isOwner ? '，主人' : '';
+            const rel = x.relation ? `，我${x.relation}` : x.isOwner ? '，主人' : '';
             return `${this.roster.nameOf(x.id)}(${x.id}${rel})`;
           })
           .join('、');
-        lines.push(`- 你认识的人：${list}`);
-        lines.push('- 上面括号里是号码。关系写着的（比如"你妈妈"）就是你和他的关系，别忘了。');
+        lines.push(`- 我认识的人：${list}`);
+        lines.push('- 上面括号里是号码。关系写着的（比如"我妈妈"）就是我和他的关系，别忘了。');
       }
     }
 
@@ -206,6 +207,28 @@ export class Agent {
   }
 
   // 模型偶尔拿"这五个字"代替人名，出口统一换成真名
+  /**
+   * 模型偶尔会把"工具调用"写成 XML 文本，直接发出去就是一堆 <parameter>。
+   * 这里把这类残渣清掉，别让它们出现在聊天里。
+   */
+  #stripToolMarkup(text) {
+    if (!text) return text;
+    let s = String(text);
+    // 任何带 parameter 的标签（包括 <parameter name="x">、</｜｜DSML｜｜ parameter>）
+    s = s.replace(/<[^>]*parameter[^>]*>/gi, '');
+    // 其他工具调用标记
+    s = s.replace(/<\/?tool_calls?[^>]*>/gi, '');
+    s = s.replace(/<\/?function_calls?[^>]*>/gi, '');
+    s = s.replace(/<\/?invoke[^>]*>/gi, '');
+    // DeepSeek 的特殊分隔符
+    s = s.replace(/[｜|]{2}DSML[｜|]{2}/g, '');
+    s = s.replace(/<[｜|]{2}[^>]*[｜|]{2}>/g, '');
+    // 收尾：去掉落单的标签碎片
+    s = s.replace(/<\/?\s*$/gm, '');
+    s = s.replace(/^\s*<\/?\s*$/gm, '');
+    return s.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trim();
+  }
+
   #fixPlaceholderOut(t) {
     const who = this.roster && this.roster.nameOf && this.ownerQq ? this.roster.nameOf(String(this.ownerQq)) : '';
     const name = who || '主人';
@@ -239,6 +262,22 @@ export class Agent {
   /** 这一轮允许用哪些工具：本地面谈只放行查资料类的，避免误发消息 */
   #allowedTool(name, ctx) {
     if (ctx?.noTools) return false;
+    const tool = this.tools.byName ? this.tools.byName.get(name) : null;
+    const plat = ctx?.platform || 'qq';
+
+    // 有的工具只能在某个平台用（比如 MCP 里配了 platforms）
+    if (Array.isArray(tool?.platforms) && tool.platforms.length && !tool.platforms.includes(plat)) return false;
+
+    // 各平台能看见哪几类工具：QQ 用 QQ 的、MC 用 MC 的、面谈只留通用的
+    const OK = {
+      qq: ['qq', 'sticker', 'body', 'people', 'memory', 'local', 'mcp'],
+      mc: ['mc', 'body', 'people', 'memory', 'local', 'mcp'],
+      panel: ['body', 'people', 'memory', 'local', 'mcp'],
+    };
+    const allow = OK[plat] || OK.qq;
+    const lib = tool?.lib || 'local';
+    if (!allow.includes(lib)) return false;
+
     if (Array.isArray(ctx?.allowTools)) return ctx.allowTools.includes(name);
     return true;
   }
@@ -249,9 +288,11 @@ export class Agent {
     if (!maybeMore) return [];
 
     const prompt =
-      `刚才的对话：\n${this.recentLines.slice(-6).map((x) => `${x.who}：${x.text}`).join('\n')}\n\n` +
-      `你刚回了这样一句：\n「${mainText}」\n\n` +
-      (usedTools.length ? '（你刚为这件事查过资料）\n' : '') +
+      `刚才的对话：\n${(ctx?.conversationId ? (this.#hist(ctx.conversationId).slice(-6) || []) : this.recentLines.slice(-6))
+        .map((x) => (x.who ? `${x.who}：${x.text}` : `${x.role === 'assistant' ? '我' : '对方'}：${x.content}`))
+        .join('\n')}\n\n` +
+      `我刚回了这样一句：\n「${mainText}」\n\n` +
+      (usedTools.length ? '（我刚为这件事查过资料）\n' : '') +
       '真人在聊天里常常说完一句又想起点别的，接着补一两条。\n' +
       '接下来还想说什么就接着说，一条也行、两条也行，没有就什么都别写（这个人就是说完这句就走了）。\n' +
       '每条 20 字以内，口语，别复述，别旁白。\n' +
@@ -273,7 +314,7 @@ export class Agent {
         body: JSON.stringify({
           model: this.llm.model,
           messages: [
-            { role: 'system', content: '你就是刚才那个人，说话口语、简短、像随手补一句。' },
+            { role: 'system', content: '我就是刚才那个人，说话口语、简短、像随手补一句。' },
             { role: 'user', content: prompt },
           ],
           temperature: 1.2,
@@ -353,8 +394,11 @@ export class Agent {
         }
         // 只有回复里真的用上了某条记忆，才算"想起"
         if (text) this.memory?.reinforceUsed?.(text);
-        const fixed = text ? this.#fixPlaceholderOut(text) : null;
-        return { text: fixed, followUps: (followUps || []).map((x) => this.#fixPlaceholderOut(x)), usedTools };
+        const fixed = text ? this.#stripToolMarkup(this.#fixPlaceholderOut(text)) : null;
+        const cleaned = (followUps || [])
+          .map((x) => this.#stripToolMarkup(this.#fixPlaceholderOut(x)))
+          .filter(Boolean);
+        return { text: fixed, followUps: cleaned, usedTools };
       }
 
       messages.push({ role: 'assistant', content: choice.content || '', tool_calls: calls });
@@ -405,6 +449,24 @@ export class Agent {
     this.#bufferTurn(rememberText, replyText, ctx);
   }
 
+
+  /** 立刻把所有攒着的会话都提取掉（要在睡前用：不然这些话说完了还没落盘） */
+  async flushAllExtract() {
+    const keys = [...this.extractBuf.keys()];
+    if (!keys.length) return 0;
+    for (const k of keys) {
+      const buf = this.extractBuf.get(k);
+      if (buf?.timer) clearTimeout(buf.timer);
+    }
+    await Promise.all(keys.map((k) => Promise.resolve(this.#flushExtract(k)).catch(() => {})));
+    return keys.length;
+  }
+
+  /** 现在缓冲里有几个会话还没提取（睡前判断用） */
+  pendingExtracts() {
+    return this.extractBuf.size;
+  }
+
   /** 把这一轮的话攒进会话缓冲；同一会话只留一个定时器，每次说话都往后推 */
   #bufferTurn(userText, replyText, ctx) {
     const key = String(ctx?.conversationId || 'default');
@@ -450,14 +512,10 @@ export class Agent {
       : ctx.scene === 'group' ? 'group:' + String(ctx.groupId || '')
       : 'private:' + String(ctx.senderId || '');
 
-    const prompt = `你正在以「阿糯」的身份和「${who}」聊天。把这一轮里你觉得值得记的东西记下来。
+    const prompt = `我正在以「阿糯」的身份和「${who}」聊天。把这一轮里我觉得值得记的东西记下来。
 
-## 打分（weight 1-10，0.5 一档，你自己判断）
-- 10：一辈子都不该忘的
-- 8-9：很重要，隔很久想起来还会在意
-- 5-7：值得记，过一阵子会淡
-- 1-4：小事。日常寒暄照记（在吗、起床了、迟到了、在干嘛），分给低，它自己会淡掉
-分数多少由你定，要谨慎判断。
+## 打分（weight 1-10，0.5 一档）
+按这件事本身的分量、以及它对我有多重来打。
 
 ## 下面是一整段对话
 - 整体看一遍再动笔：同一件事在几轮里说了几遍，只记一条。
@@ -472,11 +530,14 @@ export class Agent {
   群聊里经常是在聊别人，别把被聊的人当成说话的人。
 - 每条要能独立看懂：**谁**对谁做了什么、谁被说了什么。不要用"他""她""你"这种代词，直接写称呼。
 - who 填这条记忆的主语（这件事是关于谁的），people 填所有牵涉进来的人。
-- gist 一句话说清这件事；detail 写当时的具体细节（最多 150 字）；raw 抄他的原话，保留语气词。
-- 该不该记，你自己判断。
+- gist 写清发生了什么：谁、什么时候、因为什么、说了什么、后来怎样。尽量具体，别写成一句总结。
+  可以带一点我的判断或评价，但要跟"发生了什么"分开，别让评价替代事实。
+- detail 补当时的细节（最多 150 字）：他的语气、我的反应、周围在发生什么。
+- raw 抄他的原话，语气词别改。
+- 该不该记，我自己判断。
 
 ## 称呼和昵称
-- who：你平时怎么叫他
+- who：我平时怎么叫他
 - nick：他的昵称（原名），只当线索，不要拿来喊他
 
 ## kind
@@ -491,7 +552,7 @@ ${ctx.batch ? userText : who + '说：' + userText + '\n我回：' + replyText}`
 
     // 有时候模型会图省事直接回 []，再问它一遍
     const finalPrompt = attempt > 1
-      ? prompt + '\n\n（上一遍你什么都没记。再看一遍这段对话：谁做了什么、说了什么？至少写一条出来。只有真的全是招呼语，才算没有。）'
+      ? prompt + '\n\n（上一遍我什么都没记。再看一遍这段对话：谁做了什么、说了什么？至少写一条出来。只有真的全是招呼语，才算没有。）'
       : prompt;
 
     const res = await fetch(`${this.llm.baseUrl}/chat/completions`, {

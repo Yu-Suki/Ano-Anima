@@ -1,4 +1,4 @@
-// QQ 能力层：把 NapCat 的 OneBot 接口包装成 LLM 可调用的工具
+// 工具总装：把各处的工具拼成一张表（平台工具在 adapters/，她自身的在 body/data/，其余在 tools/）
 // 原则：
 //   1. 只做"账号本人能做的事"，不做越权
 //   2. 导出凭据（cookies/credentials）、原始数据包 —— 一律不暴露给模型
@@ -18,24 +18,13 @@ import { mcTools } from './adapters/mc/tools.js';
 import { webTools } from './tools/web.js';
 import { memTools } from './tools/mem.js';
 import { qqTools } from './adapters/qq/tools.js';
+import { bodyTools } from './body/tools.js';
+import { peopleTools } from './data/people-tools.js';
 
 export function createTools({ onebot, log, roster = null, nap = null, stickers = null, memory = null, autonomy = null, lastImage = null, vec = null, onActivate = null }) {
   const call = (action, params) => onebot.call(action, params);
 
-  const staySilent = {
-    name: 'stay_silent',
-    description:
-      '你不想回这条消息时用。调用后这条就不发出去，对方收不到任何东西。用不用完全看你自己——不想聊、没兴趣、觉得没必要回，都可以不回。',
-    parameters: {
-      type: 'object',
-      properties: { why: { type: 'string', description: '为什么不想回（可空）' } },
-      required: [],
-    },
-    async run(args = {}) {
-      log?.('info', `她决定不回这条${args.why ? '：' + args.why : ''}`);
-      return { 已跳过: true };
-    },
-  };
+;
 
   /** 把 fetch_custom_face 的各种返回形状统一成数组 */
   const asFaceList = (d) => {
@@ -107,10 +96,37 @@ export function createTools({ onebot, log, roster = null, nap = null, stickers =
 
   const qq = qqTools({ onebot, roster, log, nap });
 
+  // 看一张本地图片（截图、生成的图都算）——她自己"睁开眼睛"
+  const lookAtImage = {
+    name: 'look_at_image',
+    description: '看一张本地图片：传文件路径，返回画面内容的描述。截图之后想看屏幕上有什么，就用它。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '图片的本地路径' },
+        question: { type: 'string', description: '想让它特别留意什么，比如"报错写了什么"' },
+      },
+      required: ['path'],
+    },
+    async run(args = {}) {
+      const p = String(args.path || '').trim();
+      if (!p) return { error: '要给一个图片路径' };
+      try {
+        const { readFile } = await import('node:fs/promises');
+        const buf = await readFile(p);
+        const { describeImage } = await import('./senses/index.js');
+        const desc = await describeImage(buf.toString('base64'), '', 'screen', args.question || '');
+        return { 看到: desc };
+      } catch (e) { return { error: '看不了这张图：' + e.message }; }
+    },
+  };
+
   const tools = [
     ...qq,
     ...mem, ...mc,
-    staySilent,
+    lookAtImage,
+    ...bodyTools({ nap, log }),
+    ...peopleTools({ roster, log }),
     ...webTools(),
   ];
 
@@ -176,10 +192,15 @@ export function createTools({ onebot, log, roster = null, nap = null, stickers =
   const libOf = (name) => {
     if (TOOL_LIB.qq.test(name)) return 'qq';
     if (TOOL_LIB.mc.test(name)) return 'mc';
-    if (TOOL_LIB.sticker.test(name)) return 'sticker';
+    if (TOOL_LIB.body && TOOL_LIB.body.test(name)) return 'body';
+    if (TOOL_LIB.people && TOOL_LIB.people.test(name)) return 'people';
+    if (TOOL_LIB.sticker && TOOL_LIB.sticker.test(name)) return 'sticker';
     if (TOOL_LIB.memory.test(name)) return 'memory';
     return 'local';
   };
+
+  // 每个工具带一个 lib：qq / mc / sticker / memory / local（MCP 工具由 attachMcp 打 mcp）
+  for (const t of tools) t.lib = libOf(t.name);
 
   const manifest = tools.map((t) => ({
     lib: libOf(t.name),

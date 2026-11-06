@@ -2,7 +2,7 @@
 // 现在有三件：
 //   每分钟   —— 心情恢复、存盘、小睡醒来、凌晨三点加固
 //   每两小时 —— 整理记忆（合并相似的）
-export function startScheduler({ mood, memory, nap, state, log = () => {}, wakeUp = async () => {}, vec = null, isAsleep = () => false, onBigWake = null, onNightReview = null }) {
+export function startScheduler({ mood, memory, nap, state, log = () => {}, wakeUp = async () => {}, vec = null, isAsleep = () => false, onBigWake = null, onNightReview = null, onSleepStart = null }) {
   // 定期落盘，防止崩了丢记忆
     setInterval(() => {
       mood.tick(); // 让精力和心情随时间恢复，不然面板显示的是过期数值
@@ -11,6 +11,7 @@ export function startScheduler({ mood, memory, nap, state, log = () => {}, wakeU
       // 小睡：睡醒了主动去找人
       if (nap) {
         if (nap.isSleeping()) {
+          if (!state.napWasSleeping) { try { if (onSleepStart) onSleepStart('小睡'); } catch {} }
           state.napWasSleeping = true;
         } else if (state.napWasSleeping) {
           state.napWasSleeping = false;
@@ -49,7 +50,10 @@ export function startScheduler({ mood, memory, nap, state, log = () => {}, wakeU
     try {
       const nowAsleep = isAsleep();
       // 一进入睡眠时段就开始计时（不然没人说话就永远不会复盘）
-      if (nowAsleep && !state.sleepStartedAt) state.sleepStartedAt = Date.now();
+       if (nowAsleep && !state.sleepStartedAt) {
+         state.sleepStartedAt = Date.now();
+         try { if (onSleepStart) onSleepStart('作息'); } catch {}
+       }
       if (state.wasScheduledAsleep && !nowAsleep) {
         const mins = state.sleepStartedAt ? Math.round((Date.now() - state.sleepStartedAt) / 60000) : 0;
         state.sleepStartedAt = 0;

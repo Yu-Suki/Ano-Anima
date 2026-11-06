@@ -114,7 +114,7 @@ const md5Of = (url) => {
         justSavedUrl = img.url || '';
         // 先凭印象判断：这张看着眼熟吗（不花 token）
         const { findSimilar } = await import('../util/similar.js');
-        const { imageHash, findSameHash } = await import('../senses/phash.js');
+        const { imageHash, findSameHash } = await import('../../senses/phash.js');
         const myPh = await imageHash(img.buf);
         const metaNow = await loadMeta();
         const samePix = findSameHash(myPh, Object.values(metaNow));
@@ -163,7 +163,7 @@ const md5Of = (url) => {
         if (!urls.length) return { 条数: 0, 提示: '收藏夹是空的，在 QQ 里右键图片 → 添加到表情' };
         const meta = await loadMeta();
         // 没见过就现场看一眼，看完记住
-        const { describeImage } = await import('../senses/index.js');
+        const { describeImage } = await import('../../senses/index.js');
         let learned = 0;
         for (let x = 0; x < Math.min(urls.length, 10); x++) {
           const k = md5Of(urls[x]);
@@ -213,107 +213,6 @@ const md5Of = (url) => {
         await call('send_msg', { ...target, message: [seg] });
         log?.('info', `发了个 QQ 收藏表情（第 ${i} 个）`);
         return { 发出去了: true, 序号: i };
-      },
-    };
-  
-    // ---------- 她自己的作息：想睡就睡 ----------
-    const goSleep = {
-      name: 'go_sleep',
-      description:
-        '你觉得累了想睡一会儿时用。睡多久完全由你自己判断：看你有多困、现在几点、醒来后要不要做事。最短 5 分钟，最长 240 分钟，睡着期间别人叫你也听不见。醒来会主动去找睡前跟你说话的人。',
-      parameters: {
-        type: 'object',
-        properties: {
-          minutes: { type: 'number', description: '你打算睡多久（分钟），自己估，5-240' },
-          note: { type: 'string', description: '睡前给自己留一句话，醒来会看到' },
-        },
-        required: ['minutes'],
-      },
-      async run(args = {}, ctx = {}) {
-        if (!nap) return { error: '作息模块没加载' };
-        const place = ctx.groupId
-          ? { kind: 'group', id: String(ctx.groupId), name: ctx.groupName || `群${ctx.groupId}` }
-          : { kind: 'private', id: String(ctx.userId || ''), name: ctx.who || '对方' };
-        const m = await nap.start(args.minutes, place, args.note);
-        log?.('info', `她说要去睡了，自己定了 ${m} 分钟`);
-        return { 睡了: true, 分钟: m, 醒来时间: new Date(Date.now() + m * 60000).toLocaleTimeString('zh-CN') };
-      },
-    };
-  
-    // ---------- 人物表：她自己管称呼 ----------
-    const listPeople = {
-      name: 'people_list',
-      description:
-        '看她认识哪些人：每个人的称呼、QQ号、昵称、在哪些群。不确定该怎么称呼对方、或者想知道对方 QQ 号时用。可传 keyword 按称呼/昵称/QQ号过滤。',
-      parameters: {
-        type: 'object',
-        properties: {
-          keyword: { type: 'string', description: '只返回称呼、昵称或 QQ 号里含这个词的人' },
-        },
-        required: [],
-      },
-      async run(args = {}) {
-        if (!roster) return { error: '人物表没加载' };
-        let list = roster.all();
-        if (args.keyword) {
-          const k = String(args.keyword).toLowerCase();
-          list = list.filter((p) =>
-            [p.title, p.name, p.card, p.id, ...(p.aliases || [])]
-              .filter(Boolean)
-              .some((x) => String(x).toLowerCase().includes(k)),
-          );
-        }
-        if (!list.length) return { 人数: 0, 提示: '没有匹配的人' };
-        return {
-          人数: list.length,
-          名单: list.slice(0, 30).map((p) => ({
-            称呼: p.title || roster.nameOf(p.id),
-            昵称: p.name || p.card || '',
-            QQ: p.id,
-            关系: p.isOwner ? '主人' : '熟人',
-            在群数: (p.groups || []).length,
-          })),
-        };
-      },
-    };
-  
-    const renameP = {
-      name: 'people_rename',
-      description:
-        '按 QQ 号给某个人定称呼（她自己决定怎么叫对方）。想换个叫法、或之前叫得不合适时用。称呼只存 QQ 号上，对方改昵称也不影响。',
-      parameters: {
-        type: 'object',
-        properties: {
-          qq: { type: 'string', description: '对方的 QQ 号' },
-          title: { type: 'string', description: '新的称呼，2-8 个字，例如 主人、阿俞、老张' },
-        },
-        required: ['qq', 'title'],
-      },
-      async run(args = {}) {
-        if (!roster) return { error: '人物表没加载' };
-        const qq = String(args.qq || '').trim();
-        const title = String(args.title || '').trim().slice(0, 8);
-        if (!qq || !title) return { error: '要同时给 qq 和 title' };
-        if (!roster.people[qq]) return { error: `人物表里没有 ${qq}，先用 people_list 看看有谁` };
-        if (!roster.canRename(qq)) {
-          return {
-            error: `「${roster.nameOf(qq)}」这个称呼是主人定下的，你不能改。想换让他自己说。`,
-            ok: false,
-          };
-        }
-  
-        const before = roster.nameOf(qq);
-        // 改的是她自己：旧名和新名都留作别名，别人喊哪个都算叫她
-        const self = roster.people[qq];
-        if (self && self.isSelf) {
-          roster.addAlias(qq, before);
-          roster.addAlias(qq, title);
-        }
-        roster.setTitle(qq, title);
-        await roster.save().catch(() => {});
-        log?.('info', `她自己改了称呼：${qq} 从「${before}」改成「${title}」`);
-        try { globalThis.__dshState?.refreshSelfNames?.(); } catch {}
-        return { 改好了: true, QQ: qq, 原来叫: before, 现在叫: title };
       },
     };
   
@@ -1087,5 +986,5 @@ const md5Of = (url) => {
       },
     };
 
-  return [recentMessages, stickerSave, stickerList, stickerSend, goSleep, listPeople, renameP, listFriends, listGroups, listMembers, userInfo, history, recentContacts, sendText, sendImage, sendFile, sendAt, replyQuote, poke, like, recall, kick, mute, wholeBan, setAdmin, renameGroup, leaveGroup, setCard, notice, sign, setRemark, deleteFriend, handleFriendReq, handleGroupReq, setSignature, setNickname, onlineClients, setAvatar, listVoices, sendVoice, postMoment];
+  return [recentMessages, stickerSave, stickerList, stickerSend, listFriends, listGroups, listMembers, userInfo, history, recentContacts, sendText, sendImage, sendFile, sendAt, replyQuote, poke, like, recall, kick, mute, wholeBan, setAdmin, renameGroup, leaveGroup, setCard, notice, sign, setRemark, deleteFriend, handleFriendReq, handleGroupReq, setSignature, setNickname, onlineClients, setAvatar, listVoices, sendVoice, postMoment];
 }

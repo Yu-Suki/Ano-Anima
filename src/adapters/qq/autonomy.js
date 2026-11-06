@@ -47,12 +47,12 @@ const DRIVES = {
 // 每件事：属于哪条需求、扣多少活力、多久冷却
 // 活力只扣"聊天查资料以外"的事；发消息和搜索不扣。
 const ACTIONS = {
-  signature: { drive: 'boredom', vitality: 10, cooldown: 0, desc: '改个性签名', content: true },
+  signature: { drive: 'expression', vitality: 10, cooldown: 0, desc: '改个性签名', content: true },
   avatar: { drive: 'boredom', vitality: 25, cooldown: 0, desc: '换一张头像' },
-  card: { drive: 'boredom', vitality: 10, cooldown: 0, desc: '改群名片', content: true },
+  card: { drive: 'expression', vitality: 10, cooldown: 0, desc: '改群名片', content: true },
   message: { drive: 'social', vitality: 0, cooldown: 0, desc: '主动找主人说话', content: true },
-  group_message: { drive: 'expression', vitality: 0, cooldown: 0, desc: '在群里说句话', content: true },
-  poke: { drive: 'social', vitality: 0, cooldown: 0, desc: '戳一戳某个人', content: true },
+  group_message: { drive: 'social', vitality: 0, cooldown: 0, desc: '在群里说句话', content: true },
+  poke: { drive: 'boredom', vitality: 8, cooldown: 0, desc: '戳一戳某个人', content: true },
   moment: { drive: 'expression', vitality: 20, cooldown: 0, desc: '发一条说说', content: true },
   diary: { drive: 'expression', vitality: 5, cooldown: 0, desc: '写一篇日记（只存本地）', content: true },
   search: { drive: 'curiosity', vitality: 0, cooldown: 0, desc: '去搜个好奇的东西', content: true },
@@ -313,7 +313,8 @@ export class Autonomy {
       const ok = result?.ok !== false;
 
       this.vitality = Math.max(0, this.vitality - cost);
-      this.drives[top.key] = 0;
+      // 社交欲做完清空；表达欲/无聊/好奇各降 60~100
+      this.drives[top.key] = Math.max(0, this.drives[top.key] - 100);
       // 做成一件事，别的念想也顺带淡一点
       for (const k of Object.keys(this.drives)) {
         if (k !== top.key) this.drives[k] = Math.max(0, this.drives[k] - 10);
@@ -362,22 +363,22 @@ export class Autonomy {
       : '';
 
 
-    const prompt = `你是「阿糯」，现在一个人待着。
+    const prompt = `我是「阿糯」，现在一个人待着。
 
-你的状态：心情「${this.mood ? this.mood.label() : '平静'}」，精力 ${this.mood ? Math.round(this.mood.energy * 100) : 50}%。
-你现在最强烈的念头是「${DRIVES[top.key].zh}」——${DRIVES[top.key].hint}。
+我的状态：心情「${this.mood ? this.mood.label() : '平静'}」，精力 ${this.mood ? Math.round(this.mood.energy * 100) : 50}%。
+我现在最强烈的念头是「${DRIVES[top.key].zh}」——${DRIVES[top.key].hint}。
 其余念头：${driveLines}。
 今天还剩多少活力：${this.vitality}（做要花活力的事会扣，说话和查东西不扣）。
 最近做过：${recent.length ? recent.join('；') : '没什么'}。
-你上一次自己说的话：${this.state.lastSaid || '（还没说过）'}。
-想说什么说什么，但如果你接着往下说，得跟上一句有关系。
-你记得：${learned || '刚认识'}。
+我最近说过的话（这些别再重复了）：${this.state.lastSaid || '（还没说过）'}。
+说一件今天真实发生的事，或者我最近真正在想、但还没说过的事。别接着自己上一句往下绕。
+我记得：${learned || '刚认识'}。
 
-这个念头推着你想做点什么，可以选：
+这个念头推着我想做点什么，可以选：
 ${eligible.map((a) => `- ${a}：${ACTIONS[a].desc}（耗活力 ${this.costOf(a)}）`).join('\n')}
 - nothing：算了，不想做
 
-选一个你此刻真的想做的；不想做就选 nothing，别为了做而做。
+选一个我此刻真的想做的；不想做就选 nothing，别为了做而做。
 只输出 JSON：
 {"action":"从上面选一个","content":"要写的话（40 字内）","reason":"为什么想做，一句话"}`;
 

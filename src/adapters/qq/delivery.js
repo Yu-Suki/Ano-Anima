@@ -14,6 +14,7 @@ import { sleep, rand, chance, typingDelay, introduceTypo } from '../../text/huma
 export function createDelivery({ send, log, getConfig, fixPlaceholder, deleteMsg, respond }) {
   // ---------- 连着发好几条：等一下，合成一次 ----------
   const queue = new Map();   // 会话 → { items, timer, build }
+  const busy = new Map();    // 会话 → 正在想的那一轮（同一个会话不并发，避免一进来就回两遍）
   /**
    * 攒着这一小段时间里的话。条目要带"谁、几点、说了什么"——
    * 群里可能是好几个人在说，不能糊成一个人的话。
@@ -45,7 +46,14 @@ export function createDelivery({ send, log, getConfig, fixPlaceholder, deleteMsg
         multiSpeaker: speakers.length > 1,
         speakers,
       };
-      respond({ ...payload, meta, userText: transcript }).catch(() => {});
+      // 同一个会话串行：上一轮还没想完，就等它完事再想这一轮
+      const prev = busy.get(key) || Promise.resolve();
+      const job = prev
+        .catch(() => {})
+        .then(() => respond({ ...payload, meta, userText: transcript }))
+        .catch(() => {})
+        .finally(() => { if (busy.get(key) === job) busy.delete(key); });
+      busy.set(key, job);
     }, delayMs);
   }
 
@@ -61,7 +69,7 @@ export function createDelivery({ send, log, getConfig, fixPlaceholder, deleteMsg
       const part = parts[i];
       if (!part) continue;
 
-      if (i > 0) await sleep(5000);
+      if (i > 0) await sleep(rand(700, 1600));
       if (config.human.enabled) await sleep(typingDelay(part, config.human));
 
       const makeTypo = config.human.enabled && chance(config.human.typoChance);

@@ -26,8 +26,8 @@ export function hasVision() {
 }
 
 /** 看图：base64 → 一句描述 */
-export async function describeImage(base64, hint = '', kind = 'photo') {
-  const key = base64.slice(-64);
+export async function describeImage(base64, hint = '', kind = 'photo', question = '') {
+  const key = base64.slice(-64) + '|' + kind + '|' + String(question || '').slice(0, 40);
   const hit = cacheGet(key);
   if (hit) return hit;
 
@@ -51,7 +51,17 @@ export async function describeImage(base64, hint = '', kind = 'photo') {
               text:
               (kind === 'sticker'
                 ? '这是聊天里的一个表情包。只用一句短话说明它的情绪或梗（15 字以内），不要描述画面细节。'
-                : '用一句中文描述这张图，40 字以内。有人的话说人物在做什么、什么表情；有文字的话把文字念出来。') +
+                : kind === 'screen'
+                  ? [
+                      '这是一张电脑屏幕截图。请尽量详细地说清楚：',
+                      '1) 最前面是哪个程序/窗口（标题栏写了什么）',
+                      '2) 屏幕上主要在显示什么（列表、对话框、网页、代码、视频…）',
+                      '3) 能看到的文字，按位置念出来（按钮、菜单、聊天内容、报错），重要的原样保留',
+                      '4) 有没有按钮/输入框/弹窗，大概在什么位置（上/下/左/右/中间）',
+                      '不要评价、不要猜，只描述你看到的。最多 500 字。',
+                    ].join('\n')
+                  : '用一句中文描述这张图，40 字以内。有人的话说人物在做什么、什么表情；有文字的话把文字念出来。') +
+                (question ? `\n还要回答这个问题：${question}` : '') +
                 (hint ? `（对方说：${hint}）` : ''),
             },
             { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
@@ -64,7 +74,7 @@ export async function describeImage(base64, hint = '', kind = 'photo') {
 
   if (!res || !res.ok) return '（图片发过来了，但识别失败）';
   const data = await res.json().catch(() => null);
-  const text = (data?.choices?.[0]?.message?.content || '').trim().slice(0, 120);
+  const text = (data?.choices?.[0]?.message?.content || '').trim().slice(0, kind === 'screen' ? 1200 : 200);
   const out = text || '（一张看不懂的图）';
   cacheSet(key, out);
   return out;

@@ -3,10 +3,12 @@
 // 机器人跑在 8788 的内部接口上，面板的 /api/* 转发过去
 import { SETUP_PAGE } from './src/setup-page.js';
 import http from 'node:http';
+import net from 'node:net';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import 'dotenv/config';
 import { appendFileSync, mkdirSync } from 'node:fs';
@@ -353,6 +355,29 @@ function configured() {
   return need.every((k) => String(process.env[k] || '').trim());
 }
 
+// 协议端（SnowLuma）没在跑就用后台方式拉起来，不留任何黑窗口
+async function ensureProtocol() {
+  const alive = await new Promise((ok) => {
+    const c = net.connect({ host: '127.0.0.1', port: 3001 });
+    c.setTimeout(700);
+    c.once('connect', () => { c.destroy(); ok(true); });
+    c.once('timeout', () => { c.destroy(); ok(false); });
+    c.once('error', () => ok(false));
+  });
+  if (alive) return false;
+  const dir = join(ROOT, 'tools', 'snowluma');
+  const own = join(dir, 'node.exe');
+  const exe = existsSync(own) ? own : join(ROOT, 'tools', 'node', 'node.exe');
+  try {
+    spawn(exe, ['index.mjs'], { cwd: dir, detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    log('协议端没在跑，已在后台启动（不需要黑窗口）');
+    return true;
+  } catch (e) {
+    log('协议端启动失败：' + e.message);
+    return false;
+  }
+}
+
 function restartBot() {
   if (child) {
     manualStop = true;
@@ -514,6 +539,26 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ---------- 协议端（SnowLuma）状态与启动 ----------
+    if (p === '/api/proto/status' && req.method === 'GET') {
+      const net = await import('node:net');
+      const listening = await new Promise((ok) => {
+        const c = net.connect({ host: '127.0.0.1', port: 3001 });
+        c.setTimeout(800);
+        c.once('connect', () => { c.destroy(); ok(true); });
+        c.once('timeout', () => { c.destroy(); ok(false); });
+        c.once('error', () => ok(false));
+      });
+      return json(res, { listening, port: 3001 });
+    }
+    if (p === '/api/proto/start' && req.method === 'POST') {
+      try {
+        const started = await ensureProtocol();
+        if (started) setTimeout(() => { try { restartBot(); } catch {} }, 10000);
+        return json(res, { ok: true, started, already: !started });
+      } catch (e) { return json(res, { error: e.message }, 500); }
+    }
+
     // 启停
     if (p === '/api/control' && req.method === 'GET') {
       return json(res, {
@@ -585,48 +630,47 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (p === '/api/integrations' && req.method === 'GET') {
-      // integrations 也要真实状态（之前漏了定义，整个接口 500）
-      let realOnline = false;
+      // 真实状态：机器人连没连上、协议端在不在跑、什么时候查的
+      let bs = null, realOnline = false;
       try {
-        const bs = await askBot('/api/state');
+        bs = await askBot('/api/state');
         realOnline = Boolean(bs && bs.connected);
       } catch {}
-      let webuiUrl = '';
-      try {
-        const cfg = JSON.parse(
-          await readFile(join(ROOT, 'napcat', 'config', 'webui.json'), 'utf8'),
-        );
-        const token = cfg?.token || cfg?.Token || '';
-        if (token) webuiUrl = `http://127.0.0.1:6099/webui?token=${token}`;
-      } catch {
-        /* 没装或没配就没有入口 */
-      }
+      const protoListening = await new Promise((ok) => {
+        const c = net.connect({ host: '127.0.0.1', port: 3001 });
+        c.setTimeout(700);
+        c.once('connect', () => { c.destroy(); ok(true); });
+        c.once('timeout', () => { c.destroy(); ok(false); });
+        c.once('error', () => ok(false));
+      });
 
       return json(res, {
         qq: {
           app: 'QQ',
           via: 'SnowLuma + OneBot 11',
-          running: isNapCatRunning(),
+          running: Boolean(child),
           online: realOnline,
-          error: napcatState.error || '',
-          account: NAPCAT_ACCOUNT,
+          proto: protoListening,
+          error: '',
+          account: String(bs?.selfId || NAPCAT_ACCOUNT || ''),
           ws: NAPCAT_URL,
-          webui: webuiUrl,
-          needsManual: napcatState.manualNeeded,
-          checkedAt: napcatState.checkedAt,
-          deadStreak: napcatState.deadStreak,
-          restarting: napcatState.restarting,
-          loginState: napcatState.loginState,
-          loginHint: napcatState.loginHint || '',
-          // 桌面 QQ 开着的话，账号很可能被它占着
-          desktopQq: desktopQqCount(),
+          webui: '',
+          needsManual: !protoListening && !realOnline,
+          checkedAt: Date.now(),
+          deadStreak: 0,
+          restarting: Boolean(napcatState.restarting),
+          loginState: protoListening ? 'ok' : 'noProto',
+          loginHint: !protoListening
+            ? '协议端（SnowLuma）没在运行——点上面「启动协议端」，它会自动重连'
+            : (realOnline ? '' : '协议端在跑，但机器人没连上——点「重启机器人」'),
+          desktopQq: 0,
         },
         minecraft: {
           app: 'Minecraft',
           via: 'mineflayer',
-          host: process.env.MC_HOST || '127.0.0.1',
-          port: process.env.MC_PORT || '25565',
-          username: process.env.MC_USERNAME || 'DaFeiYu',
+          host: process.env.MC_HOST || '',
+          port: process.env.MC_PORT || '',
+          username: process.env.MC_USERNAME || '',
           note: '独立进程，用 start-mc.cmd 启动，不在这个控制台里管',
         },
         planned: [
@@ -845,7 +889,7 @@ server.listen(PANEL_PORT, HOST, () => {
   } else {
     log('warn', '没有设置 PANEL_PASSWORD，只允许本机访问');
   }
-  startBot();
+  ensureProtocol().catch(() => {}).finally(() => startBot());
   startWatchdog();
   openBrowser();
 });

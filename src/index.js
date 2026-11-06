@@ -5,6 +5,7 @@ import { config, assertUsableConfig } from './config.js';
 import { OneBot, extractText, isAtSelf, stripAtSelf } from './adapters/qq/client.js';
 import { Agent } from './core/agent.js';
 import { createTools } from './tools.js';
+import { loadMcp, attachMcp } from './mcp/index.js';
 import { Ring } from './data/store.js';
 import { House } from './home/house.js';
 import { Roster } from './data/roster.js';
@@ -196,6 +197,7 @@ async function send(target, text, meta = {}) {
   const scopeName = meta.scopeName || (target.groupId ? `群 ${target.groupId}` : `与 ${target.userId} 私聊`);
   // 她自己也进上下文，不然记不住刚说过什么
   if (target.groupId) pushRecent(String(target.groupId), '我', text);
+  else if (target.userId) pushRecent('p:' + target.userId, '我', text);
 
   if (config.dryRun) {
     log('send', `[dry-run] ${text}`);
@@ -216,6 +218,9 @@ async function send(target, text, meta = {}) {
     return null;
   }
 }
+
+// 每个会话最后一次收到消息的时间：用来判断"补话期间有没有人接话"
+const lastInboundAt = new Map();
 
 // 原生规则：静默 5 秒才开始思考
 const SILENCE_MS = 5000;
@@ -438,8 +443,15 @@ async function respond({ target, conversationId, userText, meta, senderId, sende
   await deliver(target, answer);
 
   // 补发：人说完一句常常又想起点别的
+  // 但如果这期间有人又说话了，就别再补旧的了——那会显得她没在听
+  const convKey = target.groupId ? 'g:' + target.groupId : 'p:' + target.userId;
+  const inboundBefore = lastInboundAt.get(convKey) || 0;
   for (const extra of result?.followUps || []) {
     if (!extra) continue;
+    if ((lastInboundAt.get(convKey) || 0) > inboundBefore) {
+      log('info', '补话取消：这期间有人说话了');
+      break;
+    }
     await sleep(rand(900, 2600));
     await deliver(target, extra);
   }
@@ -544,6 +556,7 @@ async function handleGroup(ev) {
     return;
   }
   // 原生规则：5 秒内没人再说话，才开始想怎么回（连发多条只会回一次）
+  lastInboundAt.set('g:' + gid, Date.now());
   scheduleReply('g:' + gid, SILENCE_MS, build, {
     who: (() => {
       try {
@@ -569,6 +582,8 @@ async function handlePrivate(ev) {
   if (seen) text = seen + (text || "");
   if (!text) return;
 
+  pushRecent('p:' + uid, ev.sender?.card || ev.sender?.nickname || String(uid), text);
+
   recordMessage({
     dir: 'in',
     scope: `user:${uid}`,
@@ -582,6 +597,7 @@ async function handlePrivate(ev) {
     log('info', `这个私聊这一分钟回够了（${qqLimiter.perMin} 条），先不接`);
     return;
   }
+  lastInboundAt.set('p:' + uid, Date.now());
   scheduleReply('p:' + uid, SILENCE_MS, () => ({
     target: { userId: uid },
     conversationId: `p:${uid}`,
@@ -725,6 +741,15 @@ async function main() {
   const qqTools = createTools({ onebot: bot, log, roster, nap, stickers, memory, autonomy: () => autonomy,
     vec: () => vec,
     onActivate: (items) => { state.lastActivation = { at: Date.now(), hits: (items || []).map((x) => ({ id: x.id, act: x.activation || 0, hop: x.hop || 0 })) }; }, lastImage: () => (lastImageBuf && Date.now() - lastImageBuf.at < 600000 ? lastImageBuf : null) });
+  // 外部 MCP 工具：能发现就接上，接不上不影响她自己那套
+  let mcpClients = [];
+  try {
+    const mcp = await loadMcp(undefined, { log });
+    mcpClients = mcp.clients || [];
+    const n = attachMcp(qqTools, mcp.tools);
+    if (n) log('ok', '工具表：本地 ' + (qqTools.tools.length - n) + ' + 外部 ' + n + ' 个');
+  } catch (e) { log('warn', 'MCP 加载失败：' + e.message); }
+
   // 向量空间：想起的不只是最像的，还有由它牵出来的
   const vec = await new VecIndex().load();
   // 启动先对齐一次：多的删掉、缺的补上
@@ -755,6 +780,17 @@ async function main() {
   state.promptsDir = ROOT + '/prompts';
   // 面板里贴的图也要能被她"存下来"
   state.setLastImage = (buf, ext = 'png') => { lastImageBuf = { buf, ext, source: 'panel', kind: 'photo', at: Date.now() }; };
+  state.flushExtracts = async () => (agent ? agent.flushAllExtract() : 0);
+  state.tidySession = async (sinceOverride = 0) => {
+    const last = state.lastSpokeAt || Date.now();
+    const since = Number(sinceOverride) || Math.max(state.lastSessionEnd || 0, state.lastReviewAt || 0) || (last - 6 * 3600 * 1000);
+    const made = await consolidator.summarizeSession({ convId: 'all', since, until: Date.now(), maxDepth: 1 });
+    state.lastSessionEnd = last;
+    await saveMergeState();
+    await memory.save();
+    return made || [];
+  };
+
   state.reloadPrompt = async () => {
     if (!agent) return;
     agent.platCache = { qq: await agent.platformPrompt('qq'), mc: await agent.platformPrompt('mc') };
@@ -831,7 +867,10 @@ async function main() {
       conversationId: platform === 'mc' ? 'mc:owner' : 'local:owner',
       platform: platform || 'qq',
       // 本地面谈只放行"查资料"和"管人物表"这类只读/本地工具：碰不到 QQ
-      allowTools: ['web_search', 'web_fetch', 'people_list', 'people_rename', 'go_sleep', 'recall_memories', 'qq_sticker_list', 'qq_sticker_send', 'qq_sticker_save', 'qq_recent_messages'],
+      // 本地面谈只放行"查资料"和"管人物表"这类只读/本地工具：碰不到 QQ
+      // MCP 接进来的外部工具（画图等）也放行——它们不直接动 QQ
+      allowTools: ['web_search', 'web_fetch', 'people_list', 'people_rename', 'go_sleep', 'recall_memories', 'qq_sticker_list', 'qq_sticker_send', 'qq_sticker_save', 'qq_recent_messages', 'look_at_image',
+        ...(qqTools.tools || []).filter((t) => t.lib === 'mcp').map((t) => t.name)],
     };
     // 本地面谈也一样：说了怎么称呼就直接改
     const wantTitle = parseRename(text);
@@ -1065,6 +1104,29 @@ async function main() {
 
   // 定时任务集中在 scheduler/ 里
   startScheduler({ mood, memory, nap, state, log, wakeUp, vec, isAsleep: () => isAsleep(config.schedule), onBigWake: (mins) => sleepConsolidate(mins),
+    // 她一进入睡眠：缓冲里还有没提取的对话，就先提取 + 做一次"会话结束"那种整合
+    onSleepStart: async (why) => {
+      try {
+        const pending = agent ? agent.pendingExtracts() : 0;
+        if (!pending) return;                                  // 没有攒着的话就什么都不做
+        // 每次睡眠用一个独立标记：作息看 sleepStartedAt，小睡看这次小睡的结束时间
+        const marker = why + ':' + (state.sleepStartedAt || nap?.until || Math.floor(Date.now() / 60000));
+        if (state.sleepFlushedFor === marker) return;
+        state.sleepFlushedFor = marker;
+        log('info', '要睡了（' + why + '）：还有 ' + pending + ' 段对话没整理');
+        const last = state.lastSpokeAt || Date.now();
+        // 时间窗：上次整合（或上次复盘）到现在。第一次跑才退回 6 小时
+        const since = Math.max(state.lastSessionEnd || 0, state.lastReviewAt || 0) || (last - 6 * 3600 * 1000);
+        await agent.flushAllExtract();                          // ① 提取（只新增）
+        try {
+          const made = await consolidator.summarizeSession({ convId: 'all', since, until: Date.now(), maxDepth: 1 });
+          if (made && made.length) log('ok', '睡前整合成 ' + made.length + ' 条');
+        } catch (e) { log('warn', '睡前整合失败：' + e.message); }
+        state.lastSessionEnd = last;
+        await saveMergeState();
+        await memory.save();
+      } catch (e) { log('warn', '睡前处理失败：' + e.message); }
+    },
     onNightReview: async (mins) => {
       try {
         await consolidator.review({ since: state.lastReviewAt || null });

@@ -774,7 +774,9 @@ export class Brain {
     const daily = [];
 
     const lines = [];
-    lines.push('（下面这些是你能想起来的，用不用、用哪条，你自己判断，不必全提）');
+    lines.push('（下面这些是我想起来的，不是正在发生的对话。');
+    lines.push('「阿糯」就是我；「主人」「妈妈」「阿潜」是别人——第三人称只是记事的写法。');
+    lines.push('用不用、提哪条，我自己判断，不必全提。）');
     
     const seen = new Set();
     // 核心记忆不再每轮强制塞进来：它权重最高，检索时自然会排到前面

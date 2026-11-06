@@ -391,6 +391,20 @@ export function startWebUI({ state, port = 8788, host = '127.0.0.1', servePage =
         return json(res, list);
       }
 
+      // ---------- 手动整理：提取缓冲 + 一次会话整合（补漏用） ----------
+      if (req.method === 'POST' && url.pathname === '/api/maintenance/tidy') {
+        try {
+          const out = { extracted: 0, merged: 0 };
+          if (state.flushExtracts) out.extracted = await state.flushExtracts();
+          if (state.tidySession) {
+            const sinceParam = Number(new URL(req.url, 'http://x').searchParams.get('since') || 0);
+            const made = await state.tidySession(sinceParam || 0);
+            out.merged = Array.isArray(made) ? made.length : 0;
+          }
+          return json(res, { ok: true, ...out });
+        } catch (e) { return json(res, { error: e.message }, 500); }
+      }
+
       // ---------- 记忆 ----------
       if (req.method === 'GET' && url.pathname === '/api/star/activation') {
         return json(res, state.lastActivation || null);
